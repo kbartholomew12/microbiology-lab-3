@@ -348,11 +348,16 @@ function buildNav(){
 function goSection(i){
   if(!G.unlocked.has(i))return;
   G.section=i;
+  // Re-render dynamic sections from current state
+  if(i===1){ document.getElementById('s-ubiquity').innerHTML=buildUbiquity(); }
+  if(i===2){ document.getElementById('s-colonies').innerHTML=buildColonies(); renderQuiz('colonies',QUIZZES.colonies,'quiz-colonies'); }
+  if(i===3){ document.getElementById('s-microscope').innerHTML=buildMicroscope(); renderQuiz('scope',QUIZZES.scope,'quiz-scope'); }
+  if(i===4){ document.getElementById('s-calcs').innerHTML=buildCalcs(); renderQuiz('application',QUIZZES.application,'quiz-application'); }
+  if(i===5){ buildReport(); }
   document.querySelectorAll('.section').forEach((s,idx)=>s.classList.toggle('active',idx===i));
   buildNav();
   window.scrollTo({top:0,behavior:'smooth'});
   if(i===3) setTimeout(drawScope,80);
-  if(i===5) buildReport();
 }
 function unlock(i){G.unlocked.add(i); buildNav();}
 function completeSection(i,xpts,lbl){
@@ -499,7 +504,13 @@ function finishPrelab(){
 }
 
 // ── UBIQUITY ──
-function buildUbiquity(){return `
+function buildUbiquity(){
+  const allInoculated = Object.keys(G.plateAssign).length >= 8;
+  const incubatorHTML = allInoculated && !G.incubated ? buildIncubatorUI() : '';
+  const nextHTML = G.incubated ? `
+    <div class="callout success"><span class="ci">✅</span><div>Incubation complete! Your plates have grown for 48 hours at 37°C. Proceed to analyze your colonies.</div></div>
+    <div style="display:flex;justify-content:flex-end"><button class="btn primary big" onclick="completeSection(1,30,'All Plates Inoculated!')">Analyze Colonies → 🦠</button></div>` : '';
+  return `
 <div class="section-head">
   <h2>🦠 Lab Exercise 1-2: Bacteria Are Ubiquitous</h2>
   <p>Select an environmental source from the rack, then click a TSA plate to inoculate it. After all 8 plates are inoculated, run the virtual incubation to grow your colonies.</p>
@@ -516,11 +527,27 @@ function buildUbiquity(){return `
     <div class="plates-grid" id="plates-grid">${buildPlatesGrid()}</div>
   </div>
 </div>
-<div id="incubator-zone"></div>
-<div id="ubiquity-next" style="${Object.keys(G.plateAssign).length>=8&&G.incubated?'':'display:none'}">
-  <div class="callout success"><span class="ci">✅</span><div>Incubation complete! Your plates have grown for 48 hours at 37°C. Proceed to analyze your colonies.</div></div>
-  <div style="display:flex;justify-content:flex-end"><button class="btn primary big" onclick="completeSection(1,30,'All Plates Inoculated!')">Analyze Colonies → 🦠</button></div>
-</div>`;}
+${incubatorHTML}
+<div id="ubiquity-next">${nextHTML}</div>`;
+}
+
+function buildIncubatorUI(){
+  return `
+<div class="card" style="margin-top:1rem">
+  <div class="card-title">🌡️ Incubation Chamber — 37°C Forced Air</div>
+  <div class="card-body" style="margin-bottom:.75rem">All 8 plates are ready! In a real lab, plates incubate at <strong>37°C for 48 hours</strong>. Click START to run the virtual incubation and watch your colonies grow.</div>
+  <div class="incubator">
+    <div style="display:flex;justify-content:center;gap:2.5rem;align-items:center;margin-bottom:1rem">
+      <div><div class="inc-temp" id="inc-temp">37.0°C</div><div class="inc-label">Temperature</div></div>
+      <div style="font-size:52px">🦠</div>
+      <div><div class="inc-time" id="inc-time">00:00 h</div><div class="inc-label">Elapsed (simulated)</div></div>
+    </div>
+    <div class="inc-bar"><div class="inc-progress" id="inc-prog" style="width:0%"></div></div>
+    <div style="font-size:12px;opacity:.6;margin-bottom:.75rem" id="inc-status">Ready to incubate — click START below</div>
+    <button class="btn primary" id="inc-btn" onclick="runIncubation()">▶ Start Incubation</button>
+  </div>
+</div>`;
+}
 
 function buildSourceRack(){
   return SOURCES.map(s=>{
@@ -550,8 +577,11 @@ function buildPlatesGrid(){
 
 function selectSource(id){
   G.selectedSource=id;
-  document.getElementById('source-rack').innerHTML=buildSourceRack();
-  document.getElementById('plates-grid').innerHTML=buildPlatesGrid();
+  // Only patch the sub-elements (avoid re-rendering the whole section mid-selection)
+  const rack=document.getElementById('source-rack');
+  const grid=document.getElementById('plates-grid');
+  if(rack) rack.innerHTML=buildSourceRack();
+  if(grid) grid.innerHTML=buildPlatesGrid();
 }
 
 function inoculatePlate(i){
@@ -562,28 +592,18 @@ function inoculatePlate(i){
   G.plateData[i]=makeColonies(G.selectedSource);
   G.selectedSource=null;
   awardXP(5,'Plate inoculated!');
-  document.getElementById('source-rack').innerHTML=buildSourceRack();
-  document.getElementById('plates-grid').innerHTML=buildPlatesGrid();
-  document.getElementById('plate-count-lbl').textContent=`Inoculated: ${Object.keys(G.plateAssign).length}/8 plates`;
-  if(Object.keys(G.plateAssign).length>=8)showIncubator();
+  const allDone = Object.keys(G.plateAssign).length >= 8;
+  if(allDone){
+    // Re-render the whole section so the incubator UI appears correctly
+    document.getElementById('s-ubiquity').innerHTML=buildUbiquity();
+  } else {
+    document.getElementById('source-rack').innerHTML=buildSourceRack();
+    document.getElementById('plates-grid').innerHTML=buildPlatesGrid();
+    document.getElementById('plate-count-lbl').textContent=`Inoculated: ${Object.keys(G.plateAssign).length}/8 plates`;
+  }
 }
 
-function showIncubator(){
-  document.getElementById('incubator-zone').innerHTML=`
-<div class="card" style="margin-top:1rem">
-  <div class="card-title">🌡️ Incubation Chamber — 37°C Forced Air</div>
-  <div class="card-body" style="margin-bottom:.75rem">All 8 plates are ready. In a real lab, plates incubate at <strong>37°C for 48 hours</strong>. Click START to run the virtual incubation and watch bacteria grow!</div>
-  <div class="incubator">
-    <div style="display:flex;justify-content:center;gap:2.5rem;align-items:center;margin-bottom:1rem">
-      <div><div class="inc-temp" id="inc-temp">37.0°C</div><div class="inc-label">Temperature</div></div>
-      <div style="font-size:52px">🦠</div>
-      <div><div class="inc-time" id="inc-time">00:00 h</div><div class="inc-label">Elapsed (simulated)</div></div>
-    </div>
-    <div class="inc-bar"><div class="inc-progress" id="inc-prog" style="width:0%"></div></div>
-    <div style="font-size:12px;opacity:.6;margin-bottom:.75rem" id="inc-status">Ready to incubate — click START below</div>
-    <button class="btn primary" id="inc-btn" onclick="runIncubation()">▶ Start Incubation</button>
-  </div>
-</div>`;}
+
 
 function runIncubation(){
   document.getElementById('inc-btn').disabled=true;
@@ -591,16 +611,18 @@ function runIncubation(){
   let prog=0;
   const interval=setInterval(()=>{
     prog+=2;
-    document.getElementById('inc-prog').style.width=prog+'%';
-    const h=Math.round(prog*0.48);
-    document.getElementById('inc-time').textContent=`${String(h).padStart(2,'0')}:00 h`;
-    if(prog%20===0) document.getElementById('inc-status').textContent=msgs[Math.min(Math.floor(prog/20),msgs.length-1)];
+    const progEl=document.getElementById('inc-prog');
+    const timeEl=document.getElementById('inc-time');
+    const statusEl=document.getElementById('inc-status');
+    if(progEl) progEl.style.width=prog+'%';
+    if(timeEl){ const h=Math.round(prog*0.48); timeEl.textContent=`${String(h).padStart(2,'0')}:00 h`; }
+    if(prog%20===0 && statusEl) statusEl.textContent=msgs[Math.min(Math.floor(prog/20),msgs.length-1)];
     if(prog>=100){
       clearInterval(interval);
       G.incubated=true;
-      document.getElementById('inc-status').textContent='✅ Incubation complete! Colonies have grown.';
-      document.getElementById('ubiquity-next').style.display='block';
       awardXP(15,'Incubation complete!');
+      // Re-render the entire ubiquity section — now G.incubated=true so the Next button appears
+      document.getElementById('s-ubiquity').innerHTML=buildUbiquity();
     }
   },60);
 }
